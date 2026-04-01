@@ -1,0 +1,22 @@
+{
+  "name": "äway | ANQ 14.0",
+  "short_name": "äway",
+  "description": "7/7 Shadow-Star Balance Clock",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    {
+      "src": "time.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "time.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
