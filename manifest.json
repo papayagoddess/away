@@ -1,7 +1,7 @@
 {
-  "name": "äway | ANQ 14.0",
+  "name": "äway | ORIGIN 10.0",
   "short_name": "äway",
-  "description": "7/7 Shadow-Star Balance Clock",
+  "description": "10-Unit True Year Decimal Clock",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#050505",
