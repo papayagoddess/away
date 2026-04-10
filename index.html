@@ -19,79 +19,205 @@
             align-items: center; width: 100%; max-width: 400px;
             text-align: center; padding: 20px;
         }
-        #weather-status { font-size: 0.7rem; margin-bottom: 5rem; letter-spacing: 0.3em; font-weight: 500; }
+
+        .env-block { font-size: 0.7rem; letter-spacing: 0.3em; font-weight: 400; margin-bottom: 5rem; }
+        #celestial-trigger { cursor: pointer; display: block; margin-bottom: 0.8rem; }
+        #weather-status { cursor: pointer; display: block; }
+
         #local-degree { font-size: 4.5rem; font-weight: 200; line-height: 0.9; margin-bottom: 0.5rem; }
         #universal-degree { font-size: 1rem; font-weight: 400; opacity: 0.3; }
         .label { font-size: 0.6rem; opacity: 0.3; margin-top: 8px; font-style: italic; }
         .divider { width: 25px; height: 1px; background: #000; margin: 35px auto; }
-        #connection-info { position: fixed; bottom: 40px; font-size: 0.55rem; opacity: 0.2; letter-spacing: 0.4em; width: 100%; text-align: center; }
+        
+        .overlay {
+            position: fixed; top: 10%; left: 5%; width: 90%; height: 80%;
+            background: #ffffff; display: none; flex-direction: column; align-items: center; z-index: 100;
+            border: 1px solid #000; box-shadow: 0 30px 60px rgba(0,0,0,0.12);
+        }
+        .scroll-area { width: 100%; overflow-y: auto; display: flex; flex-direction: column; align-items: center; -webkit-overflow-scrolling: touch; }
+        .close-btn { width: 100%; padding: 15px 0; text-align: center; font-size: 0.6rem; border-bottom: 1px solid #000; background: #fff; position: sticky; top: 0; z-index: 101; cursor: pointer; }
+
+        /* Month Nav */
+        .month-nav { display: flex; align-items: center; gap: 30px; margin-top: 35px; }
+        .nav-arrow { cursor: pointer; font-size: 0.8rem; opacity: 0.3; padding: 10px; }
+        #month-header { font-size: 0.65rem; letter-spacing: 0.4em; font-weight: 600; }
+        
+        #celestial-meta { font-size: 0.55rem; opacity: 0.4; font-style: italic; margin-top: 8px; letter-spacing: 0.2em; margin-bottom: 10px; }
+        #calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 20px 15px; padding: 30px 20px; width: 85%; text-align: center; }
+        .cal-day { font-size: 0.8rem; opacity: 0.4; font-weight: 300; }
+        .cal-day.today { opacity: 1; font-weight: 900; }
+
+        /* Holiday & Forecast Lists */
+        #holiday-list, #forecast-list { width: 85%; padding-bottom: 40px; }
+        #holiday-list { border-top: 1px solid #eee; padding-top: 20px; }
+        .holiday-group { margin-bottom: 25px; text-align: left; }
+        .holiday-season { font-size: 0.55rem; font-weight: 800; opacity: 0.3; margin-bottom: 10px; letter-spacing: 0.3em; border-bottom: 1px solid #f9f9f9; padding-bottom: 5px; }
+        .holiday-item { display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 8px; }
+        .holiday-date { font-weight: 200; width: 80px; }
+
+        .forecast-row { width: 100%; display: flex; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid #f2f2f2; font-size: 0.65rem; }
     </style>
 </head>
 <body>
 
+    <div id="calendar-overlay" class="overlay">
+        <div class="close-btn" onclick="toggleOverlay('calendar-overlay')">close</div>
+        <div class="scroll-area">
+            <div class="month-nav">
+                <span class="nav-arrow" onclick="changeMonth(-1)">&lt;</span>
+                <div id="month-header"></div>
+                <span class="nav-arrow" onclick="changeMonth(1)">&gt;</span>
+            </div>
+            <div id="celestial-meta"></div>
+            <div id="calendar-grid"></div>
+            <div id="holiday-list"></div>
+        </div>
+    </div>
+
+    <div id="forecast-overlay" class="overlay">
+        <div class="close-btn" onclick="toggleOverlay('forecast-overlay')">close</div>
+        <div id="forecast-list" class="scroll-area"></div>
+    </div>
+
     <div class="viewport-lock">
-        <div id="weather-status">searching environment...</div>
+        <div class="env-block">
+            <div id="celestial-trigger" onclick="toggleOverlay('calendar-overlay')">
+                <span id="standard-date"></span>
+            </div>
+            <div id="weather-status" onclick="toggleOverlay('forecast-overlay')">loading...</div>
+        </div>
         <div id="local-degree">0.0000°</div>
         <div class="label">local solar position</div>
         <div class="divider"></div>
         <div id="universal-degree">0.0000° u</div>
         <div class="label">universal heartbeat</div>
     </div>
-    <div id="connection-info">status: connected</div>
 
     <script>
         let userLon = null, userLat = null;
+        let viewDate = new Date();
 
-        // Service Worker & Notification Request
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').then(reg => {
-                Notification.requestPermission();
-                setInterval(() => {
-                    if (reg.active) {
-                        reg.active.postMessage({
-                            type: 'TICK',
-                            degree: document.getElementById('local-degree').textContent,
-                            weather: document.getElementById('weather-status').textContent
-                        });
-                    }
-                }, 5000); // Updates notification every 5 seconds to save battery
+        const seasonalHolidays = {
+            phis: [{ season: "out of time", items: [{m: "phïs", d: "01", n: "first day of month out of time"}, {m: "phïs", d: "28", n: "end of month out of time"}] }],
+            spring: [
+                { season: "early spring", items: [{m: "feb", d: "01", n: "first day of spring"}, {m: "feb", d: "02", n: "groundhogs day"}, {m: "feb", d: "14-16", n: "lupercalia"}] },
+                { season: "mid spring", items: [{m: "mar", d: "19", n: "equinox eve"}, {m: "mar", d: "20", n: "spring equinox"}] },
+                { season: "late spring", items: [{m: "apr", d: "01", n: "fools day"}] }
+            ],
+            summer: [
+                { season: "early summer", items: [{m: "may", d: "01", n: "first day of summer"}] },
+                { season: "mid summer", items: [{m: "jun", d: "20", n: "solstice eve"}, {m: "jun", d: "21", n: "summer solstice"}] }
+            ],
+            autumn: [
+                { season: "early autumn", items: [{m: "aug", d: "01", n: "first day of autumn"}, {m: "sep", d: "20", n: "equinox eve"}, {m: "sep", d: "21", n: "autumn equinox"}] },
+                { season: "late autumn", items: [{m: "oct", d: "27", n: "hallo's eve"}, {m: "oct", d: "28", n: "halloween"}] }
+            ],
+            winter: [
+                { season: "early winter", items: [{m: "nov", d: "01", n: "first day of winter"}, {m: "nov", d: "20", n: "harvest day"}] },
+                { season: "mid winter", items: [{m: "dec", d: "21", n: "winter solstice"}] }
+            ]
+        };
+
+        const interpretCode = (code) => {
+            if (code <= 1) return "clear";
+            if (code <= 3) return "cloudy";
+            if (code <= 48) return "fog";
+            if (code <= 67) return "rain";
+            return "active";
+        };
+
+        function toggleOverlay(id) {
+            const el = document.getElementById(id);
+            el.style.display = (el.style.display === 'flex') ? 'none' : 'flex';
+            if(id === 'calendar-overlay') renderLunarCalendar();
+        }
+
+        function changeMonth(dir) {
+            viewDate.setMonth(viewDate.getMonth() + dir);
+            renderLunarCalendar();
+        }
+
+        function renderLunarCalendar() {
+            const now = new Date();
+            const isCurrentMonth = viewDate.getMonth() === now.getMonth() && viewDate.getFullYear() === now.getFullYear();
+            const monthIdx = viewDate.getMonth();
+            
+            let monthName = viewDate.toLocaleString('en-US', { month: 'long' }).toLowerCase();
+            if (monthIdx === 0) monthName = "phïs"; 
+            document.getElementById('month-header').textContent = monthName;
+
+            const dayOfYear = Math.floor((viewDate - new Date(viewDate.getFullYear(), 0, 0)) / 86400000);
+            const lunarDay = ((dayOfYear - 1) % 28) + 1;
+            const phases = ["●","☽","◑","🌔","○","🌖","◐","☾"];
+            const phaseNames = ["new moon","waxing crescent","first quarter","waxing gibbous","full moon","waning gibbous","third quarter","waning crescent"];
+            let pIdx = (lunarDay === 1) ? 0 : (lunarDay < 7) ? 1 : (lunarDay === 7) ? 2 : (lunarDay < 14) ? 3 : (lunarDay === 14) ? 4 : (lunarDay < 21) ? 5 : (lunarDay === 21) ? 6 : 7;
+
+            const seasons = ["month out of time", "early spring", "mid spring", "late spring", "early summer", "mid summer", "late summer", "early autumn", "mid autumn", "late autumn", "early winter", "mid winter"];
+            document.getElementById('celestial-meta').textContent = `${seasons[monthIdx]} // ${phaseNames[pIdx]} ${phases[pIdx]}`;
+
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = "";
+            for (let i = 1; i <= 28; i++) {
+                const day = document.createElement('div');
+                day.className = 'cal-day';
+                if (isCurrentMonth && i === ((Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000) - 1) % 28) + 1) day.classList.add('today');
+                day.textContent = i.toString().padStart(2, '0');
+                grid.appendChild(day);
+            }
+
+            const hList = document.getElementById('holiday-list');
+            hList.innerHTML = "";
+            let activeSet = (monthIdx === 0) ? seasonalHolidays.phis : (monthIdx >= 1 && monthIdx <= 3) ? seasonalHolidays.spring : (monthIdx >= 4 && monthIdx <= 6) ? seasonalHolidays.summer : (monthIdx >= 7 && monthIdx <= 9) ? seasonalHolidays.autumn : seasonalHolidays.winter;
+
+            activeSet.forEach(s => {
+                let html = `<div class="holiday-group"><div class="holiday-season">${s.season}</div>`;
+                s.items.forEach(item => {
+                    html += `<div class="holiday-item"><span class="holiday-date">${item.m} ${item.d}</span> <span>${item.n}</span></div>`;
+                });
+                hList.innerHTML += html + `</div>`;
             });
         }
 
-        function updateStatus() {
-            const statusEl = document.getElementById('connection-info');
-            statusEl.textContent = navigator.onLine ? "status: connected" : "ethereal - null";
-        }
-
-        async function fetchWeather(lat, lon) {
-            if (!navigator.onLine) return;
+        async function fetchEnv(lat, lon) {
             try {
-                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&temperature_unit=fahrenheit`);
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=auto&forecast_days=16`);
                 const data = await res.json();
-                const desc = data.current_weather.weathercode <= 3 ? "clear skies" : "active atmosphere";
-                document.getElementById('weather-status').textContent = `${Math.round(data.current_weather.temperature)}°f — ${desc}`;
-            } catch (e) { document.getElementById('weather-status').textContent = "env: unavailable"; }
+                
+                const currentTemp = Math.round(data.daily.temperature_2m_max[0]);
+                const currentDesc = interpretCode(data.daily.weathercode[0]);
+                document.getElementById('weather-status').textContent = `${currentTemp}°f — ${currentDesc}`;
+
+                const list = document.getElementById('forecast-list');
+                list.innerHTML = "";
+                data.daily.time.forEach((date, i) => {
+                    const row = document.createElement('div');
+                    row.className = 'forecast-row';
+                    const dayLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}).toLowerCase();
+                    row.innerHTML = `<span>${dayLabel}</span><span style="opacity:0.4;font-style:italic;">${interpretCode(data.daily.weathercode[i])}</span><span>${Math.round(data.daily.temperature_2m_max[i])}° | ${Math.round(data.daily.temperature_2m_min[i])}°</span>`;
+                    list.appendChild(row);
+                });
+            } catch (e) { document.getElementById('weather-status').textContent = "env: unknown"; }
         }
 
         navigator.geolocation.getCurrentPosition(pos => {
             userLat = pos.coords.latitude; userLon = pos.coords.longitude;
-            fetchWeather(userLat, userLon);
+            fetchEnv(userLat, userLon);
         });
 
         function tick() {
             const now = new Date();
-            const utcSec = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds() + (now.getUTCMilliseconds() / 1000);
-            const uDeg = (utcSec / 86400) * 360;
-            const lDeg = userLon !== null ? (uDeg + userLon + 360) % 360 : ( ( (now.getHours()*3600)+(now.getMinutes()*60)+now.getSeconds() ) / 86400 * 360 );
+            let labelDate = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', weekday: 'long' }).toLowerCase();
+            if (now.getMonth() === 0) labelDate = labelDate.replace("january", "phïs");
+            document.getElementById('standard-date').textContent = labelDate;
 
+            const utcSec = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
+            const uDeg = (utcSec / 86400) * 360;
+            const lDeg = userLon !== null ? (uDeg + userLon + 360) % 360 : uDeg;
             document.getElementById('local-degree').textContent = lDeg.toFixed(4) + "°";
             document.getElementById('universal-degree').textContent = uDeg.toFixed(4) + "° u";
-            updateStatus();
         }
-
         setInterval(tick, 50);
-        setInterval(() => { if(userLat) fetchWeather(userLat, userLon) }, 600000);
-        window.addEventListener('online', updateStatus); window.addEventListener('offline', updateStatus);
+        setInterval(() => { if(userLat) fetchEnv(userLat, userLon) }, 3600000);
     </script>
 </body>
 </html>
