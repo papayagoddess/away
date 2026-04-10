@@ -53,8 +53,11 @@
         .holiday-item { display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 8px; }
         .holiday-date { font-weight: 200; width: 95px; }
 
-        .zodiac-item { color: #000; opacity: 1; font-weight: 400; margin-top: 15px; }
-        .forecast-row { width: 100%; display: flex; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid #f2f2f2; font-size: 0.65rem; }
+        .forecast-row { width: 100%; display: flex; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid #f2f2f2; font-size: 0.65rem; cursor: pointer; }
+        
+        /* Hourly Detailed View */
+        #hourly-overlay { z-index: 200; height: 60%; top: 20%; width: 80%; left: 10%; }
+        .hourly-row { display: flex; justify-content: space-between; width: 90%; padding: 12px 0; font-size: 0.6rem; border-bottom: 1px solid #f9f9f9; opacity: 0.6; }
     </style>
 </head>
 <body>
@@ -78,6 +81,11 @@
         <div id="forecast-list" class="scroll-area"></div>
     </div>
 
+    <div id="hourly-overlay" class="overlay">
+        <div class="close-btn" onclick="toggleOverlay('hourly-overlay')">back</div>
+        <div id="hourly-content" class="scroll-area" style="padding: 20px 0;"></div>
+    </div>
+
     <div class="viewport-lock">
         <div class="env-block">
             <div id="celestial-trigger" onclick="toggleOverlay('calendar-overlay')">
@@ -95,27 +103,7 @@
     <script>
         let userLon = null, userLat = null;
         let viewDate = new Date();
-
-        const seasonalHolidays = {
-            phis: [{ season: "out of time", items: [{m: "phïs", d: "01", n: "first day of month out of time"}, {m: "phïs", d: "28", n: "end of month out of time"}] }],
-            spring: [
-                { season: "early spring", items: [{m: "feb", d: "01", n: "first day of spring"}, {m: "feb", d: "02", n: "groundhogs day"}, {m: "feb", d: "14-16", n: "lupercalia"}] },
-                { season: "mid spring", items: [{m: "mar", d: "19", n: "equinox eve"}, {m: "mar", d: "20", n: "spring equinox"}] },
-                { season: "late spring", items: [{m: "apr", d: "01", n: "fools day"}] }
-            ],
-            summer: [
-                { season: "early summer", items: [{m: "may", d: "01", n: "first day of summer"}] },
-                { season: "mid summer", items: [{m: "jun", d: "20", n: "solstice eve"}, {m: "jun", d: "21", n: "summer solstice"}] }
-            ],
-            autumn: [
-                { season: "early autumn", items: [{m: "aug", d: "01", n: "first day of autumn"}, {m: "sep", d: "20", n: "equinox eve"}, {m: "sep", d: "21", n: "autumn equinox"}] },
-                { season: "late autumn", items: [{m: "oct", d: "27", n: "hallo's eve"}, {m: "oct", d: "28", n: "halloween"}] }
-            ],
-            winter: [
-                { season: "early winter", items: [{m: "nov", d: "01", n: "first day of winter"}, {m: "nov", d: "20", n: "harvest day"}] },
-                { season: "mid winter", items: [{m: "dec", d: "21", n: "winter solstice"}] }
-            ]
-        };
+        let globalWeatherData = null;
 
         const zodiacRanges = [
             { name: "sagittarius", range: "dec 18 - jan 18" },
@@ -132,6 +120,14 @@
             { name: "scorpius", range: "nov 23 - nov 29" },
             { name: "ophiuchus", range: "nov 30 - dec 17" }
         ];
+
+        const interpretCode = (code) => {
+            if (code <= 1) return "clear";
+            if (code <= 3) return "cloudy";
+            if (code <= 48) return "fog";
+            if (code <= 67) return "rain";
+            return "active";
+        };
 
         const getZodiac = (m, d) => {
             if (m === 0) return (d <= 19) ? "sagittarius" : "capricorn";
@@ -153,14 +149,6 @@
             return "cosmic";
         };
 
-        const interpretCode = (code) => {
-            if (code <= 1) return "clear";
-            if (code <= 3) return "cloudy";
-            if (code <= 48) return "fog";
-            if (code <= 67) return "rain";
-            return "active";
-        };
-
         function toggleOverlay(id) {
             const el = document.getElementById(id);
             el.style.display = (el.style.display === 'flex') ? 'none' : 'flex';
@@ -172,11 +160,34 @@
             renderLunarCalendar();
         }
 
+        function openHourly(dayIndex) {
+            if (!globalWeatherData) return;
+            const content = document.getElementById('hourly-content');
+            content.innerHTML = `<div style="font-size:0.5rem; letter-spacing:0.3em; margin-bottom: 20px;">hourly atmospheric check</div>`;
+            
+            // API returns flat 168-hour array (7 days) or 384 (16 days)
+            // We slice 24 hours starting from dayIndex * 24
+            const start = dayIndex * 24;
+            const end = start + 24;
+            
+            for (let i = start; i < end; i++) {
+                if (!globalWeatherData.hourly.time[i]) break;
+                const timeStr = new Date(globalWeatherData.hourly.time[i]).getHours();
+                const ampm = timeStr >= 12 ? 'pm' : 'am';
+                const displayHour = (timeStr % 12 || 12) + ampm;
+                
+                const row = document.createElement('div');
+                row.className = 'hourly-row';
+                row.innerHTML = `<span>${displayHour}</span> <span>${interpretCode(globalWeatherData.hourly.weathercode[i])}</span> <span>${Math.round(globalWeatherData.hourly.temperature_2m[i])}°</span>`;
+                content.appendChild(row);
+            }
+            toggleOverlay('hourly-overlay');
+        }
+
         function renderLunarCalendar() {
             const now = new Date();
             const monthIdx = viewDate.getMonth();
             const dayOfMonth = viewDate.getDate();
-            
             let monthName = viewDate.toLocaleString('en-US', { month: 'long' }).toLowerCase();
             if (monthIdx === 0) monthName = "phïs"; 
             document.getElementById('month-header').textContent = monthName;
@@ -188,7 +199,6 @@
             let pIdx = (lunarDay === 1) ? 0 : (lunarDay < 7) ? 1 : (lunarDay === 7) ? 2 : (lunarDay < 14) ? 3 : (lunarDay === 14) ? 4 : (lunarDay < 21) ? 5 : (lunarDay === 21) ? 6 : 7;
 
             const seasons = ["month out of time", "early spring", "mid spring", "late spring", "early summer", "mid summer", "late summer", "early autumn", "mid autumn", "late autumn", "early winter", "mid winter"];
-            
             const zodiac = getZodiac(monthIdx, dayOfMonth);
             document.getElementById('celestial-meta').textContent = `${seasons[monthIdx]} // ${zodiac} // ${phaseNames[pIdx]} ${phases[pIdx]}`;
 
@@ -204,17 +214,6 @@
 
             const hList = document.getElementById('holiday-list');
             hList.innerHTML = "";
-            let activeSet = (monthIdx === 0) ? seasonalHolidays.phis : (monthIdx >= 1 && monthIdx <= 3) ? seasonalHolidays.spring : (monthIdx >= 4 && monthIdx <= 6) ? seasonalHolidays.summer : (monthIdx >= 7 && monthIdx <= 9) ? seasonalHolidays.autumn : seasonalHolidays.winter;
-
-            activeSet.forEach(s => {
-                let html = `<div class="holiday-group"><div class="holiday-season">${s.season}</div>`;
-                s.items.forEach(item => {
-                    html += `<div class="holiday-item"><span class="holiday-date">${item.m} ${item.d}</span> <span>${item.n}</span></div>`;
-                });
-                hList.innerHTML += html + `</div>`;
-            });
-
-            // Append Zodiac list to the end of the seasonal block
             let zodiacHtml = `<div class="holiday-group" style="margin-top: 20px; border-top: 1px solid #f2f2f2; padding-top: 20px;"><div class="holiday-season">celestial alignment</div>`;
             zodiacRanges.forEach(z => {
                 const isActive = zodiac === z.name ? 'zodiac-item' : '';
@@ -225,16 +224,20 @@
 
         async function fetchEnv(lat, lon) {
             try {
-                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=auto&forecast_days=16`);
-                const data = await res.json();
-                document.getElementById('weather-status').textContent = `${Math.round(data.daily.temperature_2m_max[0])}°f — ${interpretCode(data.daily.weathercode[0])}`;
+                // Expanded to include hourly data for details
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&hourly=temperature_2m,weathercode&temperature_unit=fahrenheit&timezone=auto&forecast_days=16`);
+                globalWeatherData = await res.json();
+                
+                document.getElementById('weather-status').textContent = `${Math.round(globalWeatherData.daily.temperature_2m_max[0])}°f — ${interpretCode(globalWeatherData.daily.weathercode[0])}`;
+                
                 const list = document.getElementById('forecast-list');
                 list.innerHTML = "";
-                data.daily.time.forEach((date, i) => {
+                globalWeatherData.daily.time.forEach((date, i) => {
                     const row = document.createElement('div');
                     row.className = 'forecast-row';
+                    row.onclick = () => openHourly(i);
                     const label = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}).toLowerCase();
-                    row.innerHTML = `<span>${label}</span><span style="opacity:0.4;">${interpretCode(data.daily.weathercode[i])}</span><span>${Math.round(data.daily.temperature_2m_max[i])}° | ${Math.round(data.daily.temperature_2m_min[i])}°</span>`;
+                    row.innerHTML = `<span>${label}</span><span style="opacity:0.4;">${interpretCode(globalWeatherData.daily.weathercode[i])}</span><span>${Math.round(globalWeatherData.daily.temperature_2m_max[i])}° | ${Math.round(globalWeatherData.daily.temperature_2m_min[i])}°</span>`;
                     list.appendChild(row);
                 });
             } catch (e) { document.getElementById('weather-status').textContent = "env: offline"; }
