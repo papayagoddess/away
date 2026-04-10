@@ -2,106 +2,96 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="manifest.json">
-    <title>äway | ORIGIN 10.0</title>
+    <title>äway</title>
     <style>
-        :root { --bg: #050505; }
-        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        :root { --bg-color: #ffffff; --text-color: #000000; }
         body {
-            background-color: var(--bg); color: #ffffff; font-family: "Didot", serif;
-            margin: 0; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; height: 100vh; overflow: hidden;
+            background-color: var(--bg-color); color: var(--text-color);
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; margin: 0; text-transform: lowercase;
+            letter-spacing: 0.15em; overflow: hidden;
         }
-        #quantum-wrap { text-align: center; cursor: pointer; width: 90%; margin-top: -60px; }
-        #readout {
-            display: flex; justify-content: center; align-items: baseline;
-            font-size: clamp(8rem, 35vw, 22rem); font-weight: 400;
-            line-height: 0.9; letter-spacing: 10px; margin-bottom: 20px; 
+        .viewport-lock {
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; width: 100%; max-width: 400px;
+            text-align: center; padding: 20px;
         }
-        .dot { font-size: 0.4em; margin: 0 15px; opacity: 0.9; }
-        #quantities {
-            display: flex; justify-content: space-between; width: 100%;
-            padding: 0 20%; font-family: "Arial", sans-serif;
-            font-weight: bold; font-size: 0.65rem; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 80px; 
-        }
-        #track-container { width: 85vw; max-width: 700px; margin: 0 auto; position: relative; }
-        #track { width: 100%; height: 2px; background: #1a1a1a; position: relative; }
-        #fill {
-            height: 500%; top: -4px; width: 0%; position: absolute;
-            background-color: #ffffff; box-shadow: 0 0 20px rgba(255,255,255,0.4);
-            transition: background-color 1.5s ease, width 1s linear;
-        }
-        #bar-metrics {
-            display: flex; justify-content: space-between; margin-top: 20px;
-            font-family: 'Courier New', monospace; font-size: 0.85rem; font-weight: bold; text-transform: uppercase;
-        }
-        #footer {
-            position: absolute; bottom: 50px; width: 100%; text-align: center; 
-            font-family: "Didot", serif; font-size: 1.1rem; color: #444; 
-        }
-        #coord { font-size: 0.8rem; letter-spacing: 2px; margin-top: 10px; opacity: 0.6; }
+        #weather-status { font-size: 0.7rem; margin-bottom: 5rem; letter-spacing: 0.3em; font-weight: 500; }
+        #local-degree { font-size: 4.5rem; font-weight: 200; line-height: 0.9; margin-bottom: 0.5rem; }
+        #universal-degree { font-size: 1rem; font-weight: 400; opacity: 0.3; }
+        .label { font-size: 0.6rem; opacity: 0.3; margin-top: 8px; font-style: italic; }
+        .divider { width: 25px; height: 1px; background: #000; margin: 35px auto; }
+        #connection-info { position: fixed; bottom: 40px; font-size: 0.55rem; opacity: 0.2; letter-spacing: 0.4em; width: 100%; text-align: center; }
     </style>
 </head>
-<body onclick="toggleChaos()">
-    <div id="quantum-wrap">
-        <div id="readout"><span id="u">00</span><span class="dot">.</span><span id="p">0</span></div>
-        <div id="quantities"><span>UNIT</span><span>PULSE</span></div>
-        <div id="track-container">
-            <div id="track"><div id="fill"></div></div>
-            <div id="bar-metrics">
-                <span id="degree-status">LIGHT : THE FLARE</span>
-                <span id="perc-display">0%</span>
-            </div>
-        </div>
+<body>
+
+    <div class="viewport-lock">
+        <div id="weather-status">searching environment...</div>
+        <div id="local-degree">0.0000°</div>
+        <div class="label">local solar position</div>
+        <div class="divider"></div>
+        <div id="universal-degree">0.0000° u</div>
+        <div class="label">universal heartbeat</div>
     </div>
-    <div id="footer">
-        HOUSTON SUNRISE ANCHOR : <span id="false-time">00:00</span>
-        <div id="coord">5226 . 01 . 01</div>
-    </div>
+    <div id="connection-info">status: connected</div>
 
     <script>
-        let isChaos = false;
-        function getStatus(total) {
-            // 0-5 is Star (Light), 5-10 is Moon (Shadow)
-            if (total < 2.5) return "LIGHT : THE FLARE";
-            if (total < 5.0) return "LIGHT : THE DESCENT";
-            if (total < 7.5) return "SHADOW : THE ABYSS";
-            return "SHADOW : THE SHORELINE";
+        let userLon = null, userLat = null;
+
+        // Service Worker & Notification Request
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(reg => {
+                Notification.requestPermission();
+                setInterval(() => {
+                    if (reg.active) {
+                        reg.active.postMessage({
+                            type: 'TICK',
+                            degree: document.getElementById('local-degree').textContent,
+                            weather: document.getElementById('weather-status').textContent
+                        });
+                    }
+                }, 5000); // Updates notification every 5 seconds to save battery
+            });
         }
-        function update() {
+
+        function updateStatus() {
+            const statusEl = document.getElementById('connection-info');
+            statusEl.textContent = navigator.onLine ? "status: connected" : "ethereal - null";
+        }
+
+        async function fetchWeather(lat, lon) {
+            if (!navigator.onLine) return;
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&temperature_unit=fahrenheit`);
+                const data = await res.json();
+                const desc = data.current_weather.weathercode <= 3 ? "clear skies" : "active atmosphere";
+                document.getElementById('weather-status').textContent = `${Math.round(data.current_weather.temperature)}°f — ${desc}`;
+            } catch (e) { document.getElementById('weather-status').textContent = "env: unavailable"; }
+        }
+
+        navigator.geolocation.getCurrentPosition(pos => {
+            userLat = pos.coords.latitude; userLon = pos.coords.longitude;
+            fetchWeather(userLat, userLon);
+        });
+
+        function tick() {
             const now = new Date();
-            let start = new Date();
-            start.setHours(7, 10, 0, 0); // TRUE SUNRISE ANCHOR
-            if (now < start) start.setDate(start.getDate() - 1);
+            const utcSec = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds() + (now.getUTCMilliseconds() / 1000);
+            const uDeg = (utcSec / 86400) * 360;
+            const lDeg = userLon !== null ? (uDeg + userLon + 360) % 360 : ( ( (now.getHours()*3600)+(now.getMinutes()*60)+now.getSeconds() ) / 86400 * 360 );
 
-            let elapsed = now - start;
-            let totalSubs = (elapsed / 86400000) * 1000;
-            
-            let pulse = Math.floor((totalSubs / 10) % 10);
-            let unit = Math.floor(totalSubs / 100);
-
-            document.getElementById('u').innerText = unit.toString().padStart(2, '0');
-            document.getElementById('p').innerText = pulse;
-            document.getElementById('degree-status').innerText = `${unit}° ${getStatus(unit + (pulse/10))}`;
-            
-            let pct = (totalSubs / 1000) * 100;
-            document.getElementById('fill').style.width = pct + "%";
-            document.getElementById('perc-display').innerText = Math.floor(pct) + "%";
-            document.getElementById('false-time').innerText = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
-
-            if (isChaos) {
-                const hue = (unit * 36) % 360;
-                document.getElementById('fill').style.backgroundColor = `hsl(${hue}, 100%, 65%)`;
-                document.getElementById('degree-status').style.color = `hsl(${hue}, 100%, 65%)`;
-            } else {
-                document.getElementById('fill').style.backgroundColor = "#ffffff";
-                document.getElementById('degree-status').style.color = "#ffffff";
-            }
+            document.getElementById('local-degree').textContent = lDeg.toFixed(4) + "°";
+            document.getElementById('universal-degree').textContent = uDeg.toFixed(4) + "° u";
+            updateStatus();
         }
-        function toggleChaos() { isChaos = !isChaos; update(); }
-        setInterval(update, 1000); update();
+
+        setInterval(tick, 50);
+        setInterval(() => { if(userLat) fetchWeather(userLat, userLon) }, 600000);
+        window.addEventListener('online', updateStatus); window.addEventListener('offline', updateStatus);
     </script>
 </body>
-  </html>
-  
+</html>
