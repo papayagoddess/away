@@ -1,18 +1,12 @@
-const CACHE_NAME = 'away-v1';
-const ASSETS = [
-  'index.html',
-  'manifest.json',
-  'time.png'
-];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
-});
-
-self.addEventListener('fetch', (e) => {
-  e.respondWith(
-    caches.match(e.request).then((response) => response || fetch(e.request))
-  );
+self.addEventListener('message', (event) => {
+    if (event.data.type === 'TICK') {
+        const title = `äway: ${event.data.degree}`;
+        const options = {
+            body: event.data.weather,
+            silent: true,
+            tag: 'solar-pos', // Overwrites the same bar
+            renotify: false
+        };
+        self.registration.showNotification(title, options);
+    }
 });
