@@ -1,21 +1,14 @@
 {
-  "name": "äway | ORIGIN 10.0",
+  "name": "äway",
   "short_name": "äway",
-  "description": "10-Unit True Year Decimal Clock",
   "start_url": "index.html",
   "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#050505",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
-      "src": "time.png",
+      "src": "icon.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "time.png",
-      "sizes": "512x512",
       "type": "image/png"
     }
   ]
