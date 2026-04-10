@@ -55,9 +55,9 @@
 
         .forecast-row { width: 100%; display: flex; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid #f2f2f2; font-size: 0.65rem; cursor: pointer; }
         
-        /* Hourly Detailed View */
         #hourly-overlay { z-index: 200; height: 60%; top: 20%; width: 80%; left: 10%; }
         .hourly-row { display: flex; justify-content: space-between; width: 90%; padding: 12px 0; font-size: 0.6rem; border-bottom: 1px solid #f9f9f9; opacity: 0.6; }
+        .zodiac-active { font-weight: 600; opacity: 1 !important; color: #000; }
     </style>
 </head>
 <body>
@@ -104,6 +104,28 @@
         let userLon = null, userLat = null;
         let viewDate = new Date();
         let globalWeatherData = null;
+
+        const seasonalHolidays = {
+            phis: [{ season: "out of time", items: [{m: "phïs", d: "01", n: "first day of month out of time"}, {m: "phïs", d: "28", n: "end of month out of time"}] }],
+            spring: [
+                { season: "early spring", items: [{m: "feb", d: "01", n: "first day of spring"}, {m: "feb", d: "02", n: "groundhogs day"}] },
+                { season: "mid spring", items: [{m: "mar", d: "19", n: "equinox eve"}, {m: "mar", d: "20", n: "spring equinox"}] },
+                { season: "late spring", items: [{m: "apr", d: "01", n: "fools day"}] }
+            ],
+            summer: [
+                { season: "early summer", items: [{m: "may", d: "01", n: "first day of summer"}] },
+                { season: "mid summer", items: [{m: "jun", d: "20", n: "solstice eve"}, {m: "jun", d: "21", n: "summer solstice"}] }
+            ],
+            autumn: [
+                { season: "early autumn", items: [{m: "aug", d: "01", n: "first day of autumn"}] },
+                { season: "mid autumn", items: [{m: "sep", d: "20", n: "equinox eve"}, {m: "sep", d: "21", n: "autumn equinox"}] },
+                { season: "late autumn", items: [{m: "oct", d: "28", n: "halloween"}] }
+            ],
+            winter: [
+                { season: "early winter", items: [{m: "nov", d: "01", n: "first day of winter"}] },
+                { season: "mid winter", items: [{m: "dec", d: "21", n: "winter solstice"}] }
+            ]
+        };
 
         const zodiacRanges = [
             { name: "sagittarius", range: "dec 18 - jan 18" },
@@ -163,19 +185,19 @@
         function openHourly(dayIndex) {
             if (!globalWeatherData) return;
             const content = document.getElementById('hourly-content');
-            content.innerHTML = `<div style="font-size:0.5rem; letter-spacing:0.3em; margin-bottom: 20px;">hourly atmospheric check</div>`;
+            const dayLabel = new Date(globalWeatherData.daily.time[dayIndex] + 'T00:00:00').toLocaleDateString('en-US', {month: 'long', day: 'numeric'}).toLowerCase();
+            const dayDesc = interpretCode(globalWeatherData.daily.weathercode[dayIndex]);
+            const dayHigh = Math.round(globalWeatherData.daily.temperature_2m_max[dayIndex]);
             
-            // API returns flat 168-hour array (7 days) or 384 (16 days)
-            // We slice 24 hours starting from dayIndex * 24
+            content.innerHTML = `<div style="font-size:0.55rem; letter-spacing:0.3em; margin-bottom: 25px;">${dayLabel} // ${dayDesc} // peak ${dayHigh}°</div>`;
+            
             const start = dayIndex * 24;
             const end = start + 24;
-            
             for (let i = start; i < end; i++) {
                 if (!globalWeatherData.hourly.time[i]) break;
                 const timeStr = new Date(globalWeatherData.hourly.time[i]).getHours();
                 const ampm = timeStr >= 12 ? 'pm' : 'am';
                 const displayHour = (timeStr % 12 || 12) + ampm;
-                
                 const row = document.createElement('div');
                 row.className = 'hourly-row';
                 row.innerHTML = `<span>${displayHour}</span> <span>${interpretCode(globalWeatherData.hourly.weathercode[i])}</span> <span>${Math.round(globalWeatherData.hourly.temperature_2m[i])}°</span>`;
@@ -195,12 +217,10 @@
             const dayOfYear = Math.floor((viewDate - new Date(viewDate.getFullYear(), 0, 0)) / 86400000);
             const lunarDay = ((dayOfYear - 1) % 28) + 1;
             const phases = ["●","☽","◑","🌔","○","🌖","◐","☾"];
-            const phaseNames = ["new moon","waxing crescent","first quarter","waxing gibbous","full moon","waning gibbous","third quarter","waning crescent"];
             let pIdx = (lunarDay === 1) ? 0 : (lunarDay < 7) ? 1 : (lunarDay === 7) ? 2 : (lunarDay < 14) ? 3 : (lunarDay === 14) ? 4 : (lunarDay < 21) ? 5 : (lunarDay === 21) ? 6 : 7;
-
             const seasons = ["month out of time", "early spring", "mid spring", "late spring", "early summer", "mid summer", "late summer", "early autumn", "mid autumn", "late autumn", "early winter", "mid winter"];
             const zodiac = getZodiac(monthIdx, dayOfMonth);
-            document.getElementById('celestial-meta').textContent = `${seasons[monthIdx]} // ${zodiac} // ${phaseNames[pIdx]} ${phases[pIdx]}`;
+            document.getElementById('celestial-meta').textContent = `${seasons[monthIdx]} // ${zodiac} // ${phases[pIdx]}`;
 
             const grid = document.getElementById('calendar-grid');
             grid.innerHTML = "";
@@ -214,9 +234,19 @@
 
             const hList = document.getElementById('holiday-list');
             hList.innerHTML = "";
+            
+            // Render Seasonal Dates
+            let activeSet = (monthIdx === 0) ? seasonalHolidays.phis : (monthIdx >= 1 && monthIdx <= 3) ? seasonalHolidays.spring : (monthIdx >= 4 && monthIdx <= 6) ? seasonalHolidays.summer : (monthIdx >= 7 && monthIdx <= 9) ? seasonalHolidays.autumn : seasonalHolidays.winter;
+            activeSet.forEach(s => {
+                let html = `<div class="holiday-group"><div class="holiday-season">${s.season}</div>`;
+                s.items.forEach(item => { html += `<div class="holiday-item"><span class="holiday-date">${item.m} ${item.d}</span> <span>${item.n}</span></div>`; });
+                hList.innerHTML += html + `</div>`;
+            });
+
+            // Render Zodiac Alignment
             let zodiacHtml = `<div class="holiday-group" style="margin-top: 20px; border-top: 1px solid #f2f2f2; padding-top: 20px;"><div class="holiday-season">celestial alignment</div>`;
             zodiacRanges.forEach(z => {
-                const isActive = zodiac === z.name ? 'zodiac-item' : '';
+                const isActive = zodiac === z.name ? 'zodiac-active' : '';
                 zodiacHtml += `<div class="holiday-item ${isActive}"><span class="holiday-date">${z.range}</span> <span>${z.name}</span></div>`;
             });
             hList.innerHTML += zodiacHtml + `</div>`;
@@ -224,12 +254,9 @@
 
         async function fetchEnv(lat, lon) {
             try {
-                // Expanded to include hourly data for details
                 const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&hourly=temperature_2m,weathercode&temperature_unit=fahrenheit&timezone=auto&forecast_days=16`);
                 globalWeatherData = await res.json();
-                
                 document.getElementById('weather-status').textContent = `${Math.round(globalWeatherData.daily.temperature_2m_max[0])}°f — ${interpretCode(globalWeatherData.daily.weathercode[0])}`;
-                
                 const list = document.getElementById('forecast-list');
                 list.innerHTML = "";
                 globalWeatherData.daily.time.forEach((date, i) => {
@@ -253,7 +280,6 @@
             let labelDate = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', weekday: 'long' }).toLowerCase();
             if (now.getMonth() === 0) labelDate = labelDate.replace("january", "phïs");
             document.getElementById('standard-date').textContent = labelDate;
-
             const utcSec = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
             const uDeg = (utcSec / 86400) * 360;
             const lDeg = userLon !== null ? (uDeg + userLon + 360) % 360 : uDeg;
